@@ -1,5 +1,5 @@
 
-package com.mycompany.petspahotel;
+
 
 
 public class Booking {
