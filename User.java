@@ -1,4 +1,4 @@
-package com.mycompany.petspahotel;
+package PetSpaHotel;
 
 public class User {
     private int id;
