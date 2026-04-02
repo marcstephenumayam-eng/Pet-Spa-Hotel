@@ -552,7 +552,7 @@ public class Main {
                     System.out.println("\nBooking permanently deleted!");
                 } else {
                     System.out.println("\nFailed to delete booking.");
-                }
+                
             } else {
                 System.out.println("Deletion cancelled.");
             }
