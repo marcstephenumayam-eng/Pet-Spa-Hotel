@@ -87,23 +87,28 @@ public class Main {
         if (currentUser != null) {
             System.out.println("Login successful! Welcome back, " + username + "!");
             
-            userPets = dbManager.getUserPets(currentUser.getId());
-            if (!userPets.isEmpty()) {
-                System.out.println("You have " + userPets.size() + " pet(s) registered.");
+            if (currentUser.isAdmin()) {
+                AdminDashboard adminDashboard = new AdminDashboard(dbManager, scanner, currentUser);
+                adminDashboard.showAdminMenu();
+            } else {
+                userPets = dbManager.getUserPets(currentUser.getId());
+                if (!userPets.isEmpty()) {
+                    System.out.println("You have " + userPets.size() + " pet(s) registered.");
+                }
+                
+                spaServices = dbManager.getAvailableSpaServices();
+                cancelSpaService = new CancelSpaService(dbManager, scanner, currentUser);
+                
+                userMenu();
             }
-            
-            spaServices = dbManager.getAvailableSpaServices();
-            cancelSpaService = new CancelSpaService(dbManager, scanner, currentUser);
-            
-            mainMenu();
         } else {
             System.out.println("Invalid username or password.");
         }
     }
     
-    static void mainMenu() {
+    static void userMenu() {
         while (true) {
-            System.out.println("\n=== MAIN DASHBOARD ===");
+            System.out.println("\n=== USER DASHBOARD ===");
             System.out.println("1. Manage Pets");
             System.out.println("2. Book Pet Hotel");
             System.out.println("3. Book Spa Services");
@@ -332,13 +337,43 @@ public class Main {
     }
     
     static void bookHotel() {
+        List<Room> rooms = dbManager.getAllRooms();
+        List<Room> availableRooms = new ArrayList<>();
+        
+        for (Room room : rooms) {
+            if (room.isAvailable()) {
+                availableRooms.add(room);
+            }
+        }
+        
+        if (availableRooms.isEmpty()) {
+            System.out.println("\nNo rooms available at the moment.");
+            return;
+        }
+        
         if (userPets.isEmpty()) {
             System.out.println("\nPlease add a pet first.");
             return;
         }
         
         System.out.println("\n=== PET HOTEL BOOKING ===");
-        System.out.println("Room Types: Standard (₱1499/night), Deluxe (₱2999/night), VIP (₱4999/night)");
+        System.out.println("\nAvailable Rooms:");
+        for (int i = 0; i < availableRooms.size(); i++) {
+            Room room = availableRooms.get(i);
+            System.out.println((i + 1) + ". " + room.getRoomType() + " - ₱" + room.getPricePerNight() + "/night");
+            System.out.println("   " + room.getDescription());
+        }
+        
+        System.out.print("\nSelect room type (1-" + availableRooms.size() + "): ");
+        int roomChoice = scanner.nextInt();
+        scanner.nextLine();
+        
+        if (roomChoice < 1 || roomChoice > availableRooms.size()) {
+            System.out.println("Invalid selection.");
+            return;
+        }
+        
+        Room selectedRoom = availableRooms.get(roomChoice - 1);
         
         System.out.println("\nSelect pet:");
         for (int i = 0; i < userPets.size(); i++) {
@@ -346,33 +381,22 @@ public class Main {
         }
         System.out.print("Choose pet (0 to cancel): ");
         
-        int choice = scanner.nextInt();
+        int petChoice = scanner.nextInt();
         scanner.nextLine();
         
-        if (choice > 0 && choice <= userPets.size()) {
-            Pet selectedPet = userPets.get(choice - 1);
+        if (petChoice > 0 && petChoice <= userPets.size()) {
+            Pet selectedPet = userPets.get(petChoice - 1);
             
             System.out.print("Number of nights: ");
             int nights = scanner.nextInt();
             scanner.nextLine();
             
-            System.out.print("Room type (Standard/Deluxe/VIP): ");
-            String roomType = scanner.nextLine();
+            double totalCost = nights * selectedRoom.getPricePerNight();
             
-            double totalCost = 0;
-            if (roomType.equalsIgnoreCase("Standard")) {
-                totalCost = nights * 1499;
-            } else if (roomType.equalsIgnoreCase("Deluxe")) {
-                totalCost = nights * 2999;
-            } else if (roomType.equalsIgnoreCase("VIP")) {
-                totalCost = nights * 4999;
-            } else {
-                System.out.println("Invalid room type.");
-                return;
-            }
-            
-            if (dbManager.createHotelBooking(selectedPet.getId(), nights, roomType, totalCost)) {
+            if (dbManager.createHotelBooking(selectedPet.getId(), nights, selectedRoom.getRoomType(), totalCost)) {
                 System.out.println("\nHotel booking confirmed for " + selectedPet.getName() + "!");
+                System.out.println("Room: " + selectedRoom.getRoomType());
+                System.out.println("Nights: " + nights);
                 System.out.println("Total: ₱" + totalCost);
             } else {
                 System.out.println("Booking failed.");
