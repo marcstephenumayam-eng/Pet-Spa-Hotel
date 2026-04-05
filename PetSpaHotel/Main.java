@@ -9,6 +9,7 @@ public class Main {
     private static List<Pet> userPets;
     private static List<SpaService> spaServices;
     private static CancelSpaService cancelSpaService;
+    private static CancelHotelBooking cancelHotelBooking;
     
     public static void main(String[] args) {
         dbManager = DatabaseManager.getInstance();
@@ -98,6 +99,7 @@ public class Main {
                 
                 spaServices = dbManager.getAvailableSpaServices();
                 cancelSpaService = new CancelSpaService(dbManager, scanner, currentUser);
+                cancelHotelBooking = new CancelHotelBooking(dbManager, scanner, currentUser);
                 
                 userMenu();
             }
@@ -114,8 +116,9 @@ public class Main {
             System.out.println("3. Book Spa Services");
             System.out.println("4. View My Bookings");
             System.out.println("5. Cancel Spa Services");
-            System.out.println("6. Delete Booking");
-            System.out.println("7. Logout");
+            System.out.println("6. Cancel Hotel Booking");
+            System.out.println("7. Delete Booking");
+            System.out.println("8. Logout");
             System.out.print("Enter choice: ");
             
             int choice = scanner.nextInt();
@@ -142,9 +145,16 @@ public class Main {
                     }
                     break;
                 case 6:
-                    deleteBooking();
+                    if (cancelHotelBooking.hasActiveHotelBookings()) {
+                        cancelHotelBooking.showCancelHotelMenu();
+                    } else {
+                        System.out.println("\nNo active hotel bookings to cancel.");
+                    }
                     break;
                 case 7:
+                    deleteBooking();
+                    break;
+                case 8:
                     System.out.println("Logging out...");
                     currentUser = null;
                     return;
