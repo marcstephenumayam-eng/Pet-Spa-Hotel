@@ -91,6 +91,7 @@ public class Main {
             if (currentUser.isAdmin()) {
                 AdminDashboard adminDashboard = new AdminDashboard(dbManager, scanner, currentUser);
                 adminDashboard.showAdminMenu();
+                currentUser = null;
             } else {
                 userPets = dbManager.getUserPets(currentUser.getId());
                 if (!userPets.isEmpty()) {
@@ -347,22 +348,15 @@ public class Main {
     }
     
     static void bookHotel() {
-        List<Room> rooms = dbManager.getAllRooms();
-        List<Room> availableRooms = new ArrayList<>();
-        
-        for (Room room : rooms) {
-            if (room.isAvailable()) {
-                availableRooms.add(room);
-            }
-        }
-        
-        if (availableRooms.isEmpty()) {
-            System.out.println("\nNo rooms available at the moment.");
+        if (userPets.isEmpty()) {
+            System.out.println("\nPlease add a pet first.");
             return;
         }
         
-        if (userPets.isEmpty()) {
-            System.out.println("\nPlease add a pet first.");
+        List<Room> availableRooms = dbManager.getAvailableRooms();
+        
+        if (availableRooms.isEmpty()) {
+            System.out.println("\nNo rooms available at the moment.");
             return;
         }
         
@@ -403,11 +397,28 @@ public class Main {
             
             double totalCost = nights * selectedRoom.getPricePerNight();
             
+            System.out.println("\n=== CONFIRM HOTEL BOOKING ===");
+            System.out.println("Pet: " + selectedPet.getName());
+            System.out.println("Room: " + selectedRoom.getRoomType());
+            System.out.println("Nights: " + nights);
+            System.out.println("Total Cost: ₱" + totalCost);
+            
+            System.out.print("\nConfirm booking? (y/n): ");
+            String confirm = scanner.nextLine();
+            
+            if (!confirm.equalsIgnoreCase("y")) {
+                System.out.println("Booking cancelled.");
+                return;
+            }
+            
             if (dbManager.createHotelBooking(selectedPet.getId(), nights, selectedRoom.getRoomType(), totalCost)) {
-                System.out.println("\nHotel booking confirmed for " + selectedPet.getName() + "!");
+                System.out.println("\n✓ HOTEL BOOKING CONFIRMED!");
+                System.out.println("Pet: " + selectedPet.getName());
                 System.out.println("Room: " + selectedRoom.getRoomType());
                 System.out.println("Nights: " + nights);
                 System.out.println("Total: ₱" + totalCost);
+                System.out.println("\nCheck-in: 2:00 PM");
+                System.out.println("Check-out: 12:00 PM");
             } else {
                 System.out.println("Booking failed.");
             }
@@ -509,11 +520,12 @@ public class Main {
         
         if (dbManager.createSpaBooking(selectedPet.getId(), selectedService.getId(),
                 appointmentDate, appointmentTime, specialRequests)) {
-            System.out.println("\nSPA BOOKING CONFIRMED!");
+            System.out.println("\n✓ SPA BOOKING CONFIRMED!");
             System.out.println("Pet: " + selectedPet.getName());
             System.out.println("Service: " + selectedService.getName());
             System.out.println("Appointment: " + appointmentDate + " at " + appointmentTime);
             System.out.println("Price: ₱" + selectedService.getPrice());
+            System.out.println("\nPlease arrive 10 minutes before your appointment.");
         } else {
             System.out.println("Booking failed.");
         }
@@ -583,7 +595,7 @@ public class Main {
             
             if (confirm.equalsIgnoreCase("y")) {
                 if (dbManager.deleteBooking(booking.getId())) {
-                    System.out.println("\nBooking permanently deleted!");
+                    System.out.println("\n✓ Booking permanently deleted!");
                 } else {
                     System.out.println("\nFailed to delete booking.");
                 }

@@ -9,7 +9,14 @@ public class DatabaseManager {
     private static DatabaseManager instance;
     
     private DatabaseManager() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            System.err.println("SQLite JDBC Driver not found!");
+        }
         createTables();
+        createDefaultAdmin();
+        initializeDefaultRooms();
     }
     
     public static DatabaseManager getInstance() {
@@ -24,7 +31,7 @@ public class DatabaseManager {
                 "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                 "username TEXT UNIQUE NOT NULL," +
                 "password TEXT NOT NULL," +
-                "is_admin INTEGER DEFAULT 0," +
+                "role TEXT DEFAULT 'user'," +
                 "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                 ")";
         
@@ -65,7 +72,7 @@ public class DatabaseManager {
         
         String createRoomsTable = "CREATE TABLE IF NOT EXISTS rooms (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "room_type TEXT NOT NULL UNIQUE," +
+                "room_type TEXT NOT NULL," +
                 "price_per_night REAL NOT NULL," +
                 "is_available INTEGER DEFAULT 1," +
                 "description TEXT" +
@@ -81,8 +88,6 @@ public class DatabaseManager {
             stmt.execute(createRoomsTable);
             
             initializeSpaServices();
-            initializeRooms();
-            initializeAdminUser();
             
         } catch (SQLException e) {
             System.err.println("Database initialization error: " + e.getMessage());
@@ -110,7 +115,25 @@ public class DatabaseManager {
         }
     }
     
-    private void initializeRooms() {
+    private void createDefaultAdmin() {
+        String checkSql = "SELECT COUNT(*) FROM users WHERE role = 'admin'";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(checkSql)) {
+            
+            if (rs.next() && rs.getInt(1) == 0) {
+                String insertSql = "INSERT INTO users(username, password, role) VALUES('admin', 'admin123', 'admin')";
+                stmt.executeUpdate(insertSql);
+                System.out.println("Default admin account created!");
+                System.out.println("Admin Username: admin");
+                System.out.println("Admin Password: admin123");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error creating admin: " + e.getMessage());
+        }
+    }
+    
+    private void initializeDefaultRooms() {
         String checkSql = "SELECT COUNT(*) FROM rooms";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              Statement stmt = conn.createStatement();
@@ -121,31 +144,18 @@ public class DatabaseManager {
                         "('Standard', 1499, 'Comfortable room with basic amenities'), " +
                         "('Deluxe', 2999, 'Spacious room with premium amenities'), " +
                         "('VIP Suite', 4999, 'Luxury suite with exclusive services')";
-                
                 stmt.executeUpdate(insertSql);
+                System.out.println("Default rooms initialized");
             }
         } catch (SQLException e) {
             System.err.println("Error initializing rooms: " + e.getMessage());
         }
     }
     
-    private void initializeAdminUser() {
-        String checkSql = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(checkSql)) {
-            
-            if (rs.next() && rs.getInt(1) == 0) {
-                String insertSql = "INSERT INTO users (username, password, is_admin) VALUES ('admin', 'admin123', 1)";
-                stmt.executeUpdate(insertSql);
-            }
-        } catch (SQLException e) {
-            System.err.println("Error initializing admin user: " + e.getMessage());
-        }
-    }
+    // ==================== USER OPERATIONS ====================
     
     public boolean createUser(String username, String password) {
-        String sql = "INSERT INTO users(username, password, is_admin) VALUES(?, ?, 0)";
+        String sql = "INSERT INTO users(username, password, role) VALUES(?, ?, 'user')";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, username);
@@ -158,7 +168,7 @@ public class DatabaseManager {
     }
     
     public User authenticateUser(String username, String password) {
-        String sql = "SELECT id, username, password, is_admin FROM users WHERE username = ? AND password = ?";
+        String sql = "SELECT id, username, password, role FROM users WHERE username = ? AND password = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, username);
@@ -167,10 +177,10 @@ public class DatabaseManager {
             
             if (rs.next()) {
                 return new User(
-                    rs.getInt("id"), 
-                    rs.getString("username"), 
+                    rs.getInt("id"),
+                    rs.getString("username"),
                     rs.getString("password"),
-                    rs.getInt("is_admin") == 1
+                    rs.getString("role")
                 );
             }
         } catch (SQLException e) {
@@ -178,6 +188,43 @@ public class DatabaseManager {
         }
         return null;
     }
+    
+    public List<User> getAllUsers() {
+        List<User> users = new ArrayList<>();
+        String sql = "SELECT id, username, password, role FROM users ORDER BY id";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                User user = new User(
+                    rs.getInt("id"),
+                    rs.getString("username"),
+                    rs.getString("password"),
+                    rs.getString("role")
+                );
+                users.add(user);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error getting users: " + e.getMessage());
+        }
+        return users;
+    }
+    
+    public boolean deleteUser(int userId) {
+        String sql = "DELETE FROM users WHERE id = ? AND role != 'admin'";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, userId);
+            int rowsAffected = pstmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.err.println("Error deleting user: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    // ==================== PET OPERATIONS ====================
     
     public boolean savePet(int userId, Pet pet) {
         String sql = "INSERT INTO pets(user_id, name, breed, age, health_condition, special_notes) VALUES(?, ?, ?, ?, ?, ?)";
@@ -253,7 +300,7 @@ public class DatabaseManager {
             ResultSet rs = pstmt.executeQuery();
             
             if (rs.next() && rs.getInt(1) > 0) {
-                System.out.println("Cannot delete pet with active bookings. Please cancel bookings first.");
+                System.out.println("Cannot delete pet with active bookings.");
                 return false;
             }
             
@@ -268,6 +315,8 @@ public class DatabaseManager {
             return false;
         }
     }
+    
+    // ==================== SPA SERVICE OPERATIONS ====================
     
     public List<SpaService> getAvailableSpaServices() {
         List<SpaService> services = new ArrayList<>();
@@ -294,7 +343,7 @@ public class DatabaseManager {
     
     public List<SpaService> getAllSpaServices() {
         List<SpaService> services = new ArrayList<>();
-        String sql = "SELECT * FROM spa_services ORDER BY price";
+        String sql = "SELECT * FROM spa_services ORDER BY id";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -316,7 +365,7 @@ public class DatabaseManager {
     }
     
     public boolean addSpaService(String name, String description, double price, int duration) {
-        String sql = "INSERT INTO spa_services (service_name, description, price, duration, is_active) VALUES (?, ?, ?, ?, 1)";
+        String sql = "INSERT INTO spa_services (service_name, description, price, duration, is_active) VALUES(?, ?, ?, ?, 1)";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, name);
@@ -362,9 +411,11 @@ public class DatabaseManager {
         }
     }
     
+    // ==================== ROOM OPERATIONS ====================
+    
     public List<Room> getAllRooms() {
         List<Room> rooms = new ArrayList<>();
-        String sql = "SELECT * FROM rooms ORDER BY price_per_night";
+        String sql = "SELECT * FROM rooms ORDER BY id";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -380,13 +431,36 @@ public class DatabaseManager {
                 rooms.add(room);
             }
         } catch (SQLException e) {
-            System.err.println("Error getting rooms: " + e.getMessage());
+            System.err.println("Error getting all rooms: " + e.getMessage());
+        }
+        return rooms;
+    }
+    
+    public List<Room> getAvailableRooms() {
+        List<Room> rooms = new ArrayList<>();
+        String sql = "SELECT * FROM rooms WHERE is_available = 1 ORDER BY price_per_night";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                Room room = new Room(
+                    rs.getInt("id"),
+                    rs.getString("room_type"),
+                    rs.getDouble("price_per_night"),
+                    true,
+                    rs.getString("description")
+                );
+                rooms.add(room);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error getting available rooms: " + e.getMessage());
         }
         return rooms;
     }
     
     public boolean addRoom(String roomType, double pricePerNight, String description) {
-        String sql = "INSERT INTO rooms (room_type, price_per_night, description, is_available) VALUES (?, ?, ?, 1)";
+        String sql = "INSERT INTO rooms (room_type, price_per_night, is_available, description) VALUES(?, ?, 1, ?)";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, roomType);
@@ -429,6 +503,8 @@ public class DatabaseManager {
             return false;
         }
     }
+    
+    // ==================== BOOKING OPERATIONS ====================
     
     public boolean createSpaBooking(int petId, int serviceId, String appointmentDate, 
                                    String appointmentTime, String specialRequests) {
@@ -534,28 +610,6 @@ public class DatabaseManager {
             System.err.println("Error getting all bookings: " + e.getMessage());
         }
         return bookings;
-    }
-    
-    public List<User> getAllUsers() {
-        List<User> users = new ArrayList<>();
-        String sql = "SELECT id, username, is_admin, created_at FROM users";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
-            while (rs.next()) {
-                User user = new User(
-                    rs.getInt("id"),
-                    rs.getString("username"),
-                    "",
-                    rs.getInt("is_admin") == 1
-                );
-                users.add(user);
-            }
-        } catch (SQLException e) {
-            System.err.println("Error getting users: " + e.getMessage());
-        }
-        return users;
     }
     
     public boolean cancelBooking(int bookingId) {
